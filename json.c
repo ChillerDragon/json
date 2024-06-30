@@ -15,18 +15,38 @@ enum {
   TYPE_ARR,
 };
 
-const char *type_to_str(int type)
-{
-  if(type == TYPE_UNDEFINED) { return "UNDEFINED"; }
-  if(type == TYPE_NULL) { return "NULL"; }
-  if(type == TYPE_BOOL) { return "BOOL"; }
-  if(type == TYPE_STR) { return "STRING"; }
-  if(type == TYPE_INT) { return "INTEGER"; }
-  if(type == TYPE_FLOAT) { return "FLOAT"; }
-  if(type == TYPE_OBJ) { return "OBJECT"; }
-  if(type == TYPE_ARR) { return "ARRAY"; }
+const char *type_to_str(int type) {
+  if (type == TYPE_UNDEFINED) {
+    return "UNDEFINED";
+  }
+  if (type == TYPE_NULL) {
+    return "NULL";
+  }
+  if (type == TYPE_BOOL) {
+    return "BOOL";
+  }
+  if (type == TYPE_STR) {
+    return "STRING";
+  }
+  if (type == TYPE_INT) {
+    return "INTEGER";
+  }
+  if (type == TYPE_FLOAT) {
+    return "FLOAT";
+  }
+  if (type == TYPE_OBJ) {
+    return "OBJECT";
+  }
+  if (type == TYPE_ARR) {
+    return "ARRAY";
+  }
   return "unknown";
 }
+
+enum {
+  ARR_STATE_NONE,
+  ARR_STATE_GOT_COMMA, // expect value or end
+};
 
 enum {
   OBJ_STATE_NONE,      // not a object
@@ -53,7 +73,7 @@ struct JsonValue {
 
   int integer;
   char *str;
-  int num_values;
+  int length;
   char **keys;
   void **values;
 } typedef JsonValue;
@@ -95,12 +115,13 @@ void _assert_str_eq(const char *expected, const char *actual, const char *file,
 int json_parse(JsonValue *out, const char *str) {
   out->type = TYPE_UNDEFINED;
   out->str = NULL;
-  out->num_values = 0;
+  out->length = 0;
   out->integer = 0;
   out->keys = NULL;
   out->values = NULL;
   void *complex_value = NULL;
   int obj_state = OBJ_STATE_NONE;
+  int arr_state = ARR_STATE_NONE;
   int i = 0;
   // TODO: allow bigger numbers
   //       max integer digits is 16
@@ -156,7 +177,13 @@ int json_parse(JsonValue *out, const char *str) {
         out->type = TYPE_OBJ;
         obj_state = OBJ_STATE_PRE_KEY;
         break;
+      case '[':
+        // puts("got array");
+        out->type = TYPE_ARR;
+        break;
       default:
+        fprintf(stderr, "i=%d type=%s str=%s\n", i, type_to_str(out->type),
+                str + i);
         PANIC("unexpected symbol");
       }
       break;
@@ -185,15 +212,57 @@ int json_parse(JsonValue *out, const char *str) {
         int len = strlen(buf) + 1;
         out->str = malloc(len);
         strncpy(out->str, buf, len);
-        return i;
+        return i + 1;
       }
       buf[b++] = str[i];
       // printf("consume str buf=%s\n", buf);
       break;
+    case TYPE_ARR:
+      if (str[i] == ']') {
+        // TODO: do we need to do anything here? xd
+        return i;
+      }
+
+      // skip to value
+      if (str[i] == ' ')
+        break;
+      if (str[i] == '\n')
+        break;
+      if (str[i] == '\t')
+        break;
+      if (str[i] == ',') {
+        if (arr_state == ARR_STATE_GOT_COMMA) {
+          PANIC("got array with two commas");
+        }
+        arr_state = ARR_STATE_GOT_COMMA;
+        break;
+      }
+      arr_state = ARR_STATE_NONE;
+
+      out->length++;
+      if (!(out->keys = realloc(out->keys, sizeof(char *) * out->length))) {
+        fprintf(stderr, "errno: %d\n", errno);
+        PANIC("array realloc keys failed");
+      }
+      if (!(out->values = realloc(out->values, sizeof(void *) * out->length))) {
+        fprintf(stderr, "errno: %d\n", errno);
+        PANIC("array realloc values failed");
+      }
+
+      snprintf(buf, sizeof(buf), "%d", out->length);
+      int len = strlen(buf) + 1;
+      out->keys[out->length - 1] = malloc(len);
+      strncpy(out->keys[out->length - 1], buf, len);
+      JsonValue *v = malloc(sizeof(JsonValue));
+      // printf("got array value=%s\n", str + i);
+      i += json_parse(v, str + i) - 1;
+      // printf("after array value=%s\n", str + i);
+      out->values[out->length - 1] = v;
+      break;
     case TYPE_OBJ:
       if (str[i] == '}') {
         // TODO: do we need to do anything here? xd
-        return i;
+        return i + 1;
       }
       // consume obj
 
@@ -216,26 +285,25 @@ int json_parse(JsonValue *out, const char *str) {
         if (str[i] == '"') {
           obj_state = OBJ_STATE_KEY_END;
 
-          out->num_values++;
-          if (!(out->keys =
-                    realloc(out->keys, sizeof(char *) * out->num_values))) {
+          out->length++;
+          if (!(out->keys = realloc(out->keys, sizeof(char *) * out->length))) {
             fprintf(stderr, "errno: %d\n", errno);
             PANIC("realloc keys failed");
           }
           if (!(out->values =
-                    realloc(out->values, sizeof(void *) * out->num_values))) {
+                    realloc(out->values, sizeof(void *) * out->length))) {
             fprintf(stderr, "errno: %d\n", errno);
             PANIC("realloc values failed");
           }
 
           buf[b] = 0;
           int len = strlen(buf) + 1;
-          out->keys[out->num_values - 1] = malloc(len);
-          out->values[out->num_values - 1] = NULL;
-          // printf("set key numvalues=%d\n", out->num_values);
-          strncpy(out->keys[out->num_values - 1], buf, len);
-          // printf("set keys[%d] = %s\n", out->num_values - 1,
-          // out->keys[out->num_values - 1]);
+          out->keys[out->length - 1] = malloc(len);
+          out->values[out->length - 1] = NULL;
+          // printf("set key numvalues=%d\n", out->length);
+          strncpy(out->keys[out->length - 1], buf, len);
+          // printf("set keys[%d] = %s\n", out->length - 1,
+          // out->keys[out->length - 1]);
           break;
         }
         buf[b++] = str[i];
@@ -248,7 +316,7 @@ int json_parse(JsonValue *out, const char *str) {
 
         JsonValue *v = malloc(sizeof(JsonValue));
         i += json_parse(v, str + i + 1);
-        out->values[out->num_values - 1] = v;
+        out->values[out->length - 1] = v;
         obj_state = OBJ_STATE_VALUE_END;
         break;
       case OBJ_STATE_VALUE_END:
@@ -263,9 +331,9 @@ int json_parse(JsonValue *out, const char *str) {
           return i;
           break;
         case ',':
-                b=0;
-                memset(buf, 0, sizeof(buf));
-                obj_state = OBJ_STATE_PRE_KEY;
+          b = 0;
+          memset(buf, 0, sizeof(buf));
+          obj_state = OBJ_STATE_PRE_KEY;
           break;
         default:
           fprintf(stderr, "i=%d str=%s\n", i, str + i);
@@ -295,7 +363,7 @@ void json_free(JsonValue *v) {
     free(v->str);
     v->str = NULL;
   }
-  for (int i = 0; i < v->num_values; i++) {
+  for (int i = 0; i < v->length; i++) {
     if (v->keys[i]) {
       // printf("freeing key[%d]\n", i);
       free(v->keys[i]);
@@ -307,7 +375,7 @@ void json_free(JsonValue *v) {
       v->values[i] = NULL;
     }
   }
-  if (v->num_values) {
+  if (v->length) {
     // puts("freeing keys");
     free(v->keys);
     // puts("freeing values");
@@ -335,7 +403,17 @@ int main() {
   ASSERT_INT_EQ(2, v.integer);
   json_free(&v);
 
+  json_parse(&v, "   1823          ,");
+  printf("value: %d\n", v.integer);
+  ASSERT_INT_EQ(1823, v.integer);
+  json_free(&v);
+
   json_parse(&v, "2}");
+  printf("value: %d\n", v.integer);
+  ASSERT_INT_EQ(2, v.integer);
+  json_free(&v);
+
+  json_parse(&v, "2]");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(2, v.integer);
   json_free(&v);
@@ -394,9 +472,107 @@ int main() {
   ASSERT_STR_EQ("foo", v.keys[0]);
   printf("value type: %s\n", type_to_str(((JsonValue *)v.values[0])->type));
   ASSERT_STR_EQ("OBJECT", type_to_str(((JsonValue *)v.values[0])->type));
-  printf("value[0].keys[0] %d\n", ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
-  ASSERT_INT_EQ(2, ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
+  printf("value[0].keys[0] %d\n",
+         ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
+  ASSERT_INT_EQ(2,
+                ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
+  json_free(&v);
+
+  json_parse(&v, "{}");
+  ASSERT_STR_EQ("OBJECT", type_to_str(v.type));
+  ASSERT_INT_EQ(0, v.length);
+  json_free(&v);
+
+  json_parse(&v, "[]");
+  ASSERT_STR_EQ("ARRAY", type_to_str(v.type));
+  ASSERT_INT_EQ(0, v.length);
+  json_free(&v);
+
+  json_parse(&v, "[                          ]");
+  ASSERT_INT_EQ(0, v.length);
+  json_free(&v);
+
+  json_parse(&v, "[2]");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[0])->integer));
+  json_free(&v);
+
+  json_parse(&v, "[   625        ]");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_INT_EQ(625, (((JsonValue *)v.values[0])->integer));
+  json_free(&v);
+
+  json_parse(&v, "[   625    , 2    ]");
+  ASSERT_INT_EQ(2, v.length);
+  ASSERT_INT_EQ(625, (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[1])->integer));
+  json_free(&v);
+
+  json_parse(&v, "[1,2,3]");
+  ASSERT_INT_EQ(3, v.length);
+  ASSERT_INT_EQ(1, (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[1])->integer));
+  ASSERT_INT_EQ(3, (((JsonValue *)v.values[2])->integer));
+  json_free(&v);
+
+  json_parse(&v, "[1,2,[3]]");
+  ASSERT_INT_EQ(3, v.length);
+  ASSERT_INT_EQ(1, (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[1])->integer));
+  ASSERT_STR_EQ("ARRAY", type_to_str(((JsonValue *)v.values[2])->type));
+  ASSERT_INT_EQ(3,
+                ((JsonValue *)((JsonValue *)v.values[2])->values[0])->integer);
+  json_free(&v);
+
+  json_parse(&v, "[{}]");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_STR_EQ("ARRAY", type_to_str(v.type));
+  ASSERT_STR_EQ("OBJECT", type_to_str(((JsonValue *)v.values[0])->type));
+  json_free(&v);
+
+  json_parse(&v, "[[[[]]]]");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_STR_EQ("ARRAY", type_to_str(v.type));
+  ASSERT_STR_EQ("ARRAY", type_to_str(((JsonValue *)v.values[0])->type));
+  ASSERT_STR_EQ(
+      "ARRAY",
+      type_to_str(((JsonValue *)((JsonValue *)v.values[0])->values[0])->type));
+  ASSERT_STR_EQ(
+      "ARRAY",
+      type_to_str(
+          ((JsonValue *)((JsonValue *)((JsonValue *)v.values[0])->values[0])
+               ->values[0])
+              ->type));
+  json_free(&v);
+
+  json_parse(&v, "{\"foo\": \"bar\"}");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_STR_EQ("OBJECT", type_to_str(v.type));
+  ASSERT_STR_EQ("STRING", type_to_str(((JsonValue *)v.values[0])->type));
+  ASSERT_STR_EQ("bar", ((JsonValue *)v.values[0])->str);
+  json_free(&v);
+
+  json_parse(&v, "[{\"foo\": \"bar\"}]");
+  ASSERT_INT_EQ(1, v.length);
+  ASSERT_STR_EQ("ARRAY", type_to_str(v.type));
+  ASSERT_STR_EQ("OBJECT", type_to_str(((JsonValue *)v.values[0])->type));
+  json_free(&v);
+
+  json_parse(&v, "[1,2,[3, {\"foo\": \"bar\"}]]");
+  ASSERT_INT_EQ(3, v.length);
+  ASSERT_INT_EQ(1, (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[1])->integer));
+  ASSERT_STR_EQ("ARRAY", type_to_str(((JsonValue *)v.values[2])->type));
+  ASSERT_INT_EQ(3,
+                ((JsonValue *)((JsonValue *)v.values[2])->values[0])->integer);
+  ASSERT_STR_EQ(
+      "OBJECT",
+      type_to_str(((JsonValue *)((JsonValue *)v.values[2])->values[1])->type));
+  ASSERT_STR_EQ("foo",
+                ((JsonValue *)((JsonValue *)v.values[2])->values[1])->keys[0]);
+  ASSERT_STR_EQ(
+      "bar", ((JsonValue *)((JsonValue *)((JsonValue *)v.values[2])->values[1])
+                  ->values[0])
+                 ->str);
   json_free(&v);
 };
-
-//  {"a": 2}

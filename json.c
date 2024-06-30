@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,13 +15,37 @@ enum {
   TYPE_ARR,
 };
 
+enum {
+  OBJ_STATE_NONE,      // not a object
+  OBJ_STATE_PRE_KEY,   // expect "
+  OBJ_STATE_KEY,       // expect key char or "
+  OBJ_STATE_KEY_END,   // expect :
+  OBJ_STATE_PRE_VALUE, // expect value start or spaces  ??? do we need this?
+                       // recursion should cover it
+  OBJ_STATE_VALUE,     // expect value end                  ??? do we need this?
+                       // recursion should cover it
+  OBJ_STATE_VALUE_END, // expect }
+};
+
+// {        "foo":              2212              }
+//  ^       ^   ^^              ^   ^
+//  pre key |   |pre value      |   value end
+//          key |              value
+//             key end
+
+// {        "foo":              "xxxx"              }
+//  ^       ^   ^^              ^    ^
+//  pre key |   |pre value      |    value end
+//          key |              value
+//             key end
+
 struct JsonValue {
   int type;
 
   int integer;
   char *str;
   int num_values;
-  const char **keys;
+  char **keys;
   void **values;
 } typedef JsonValue;
 
@@ -57,7 +82,7 @@ void _assert_str_eq(const char *expected, const char *actual, const char *file,
   _assert_str_eq(expected, actual, __FILE__, __LINE__);
 
 // returns 0 on error
-// returns 1 on succes
+// returns number of consumed characters on success
 int json_parse(JsonValue *out, const char *str) {
   out->type = TYPE_UNDEFINED;
   out->str = NULL;
@@ -65,6 +90,8 @@ int json_parse(JsonValue *out, const char *str) {
   out->integer = 0;
   out->keys = NULL;
   out->values = NULL;
+  void *complex_value = NULL;
+  int obj_state = OBJ_STATE_NONE;
   int i = 0;
   // TODO: allow bigger numbers
   //       max integer digits is 16
@@ -81,9 +108,7 @@ int json_parse(JsonValue *out, const char *str) {
         PANIC("unexpected eof for undefined type");
         break;
       case TYPE_INT:
-        buf[b] = 0;
-        out->integer = atoi(buf);
-        return 1;
+        goto end_int;
         break;
       case TYPE_STR:
         PANIC("missing \"");
@@ -97,6 +122,11 @@ int json_parse(JsonValue *out, const char *str) {
     switch (out->type) {
     case TYPE_UNDEFINED:
       switch (str[i]) {
+      case ' ':
+      case '\n':
+      case '\t':
+        // skip to values
+        break;
       case '0':
       case '1':
       case '2':
@@ -115,13 +145,30 @@ int json_parse(JsonValue *out, const char *str) {
         break;
       case '{':
         out->type = TYPE_OBJ;
+        obj_state = OBJ_STATE_PRE_KEY;
         break;
       default:
         PANIC("unexpected symbol");
       }
       break;
     case TYPE_INT:
-      buf[b++] = str[i];
+      switch (str[i]) {
+      case '0':
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+      case '6':
+      case '7':
+      case '8':
+      case '9':
+        buf[b++] = str[i];
+        printf("consume int buf=%s\n", buf);
+        break;
+      default:
+        goto end_int;
+      }
       break;
     case TYPE_STR:
       if (str[i] == '"') {
@@ -129,9 +176,72 @@ int json_parse(JsonValue *out, const char *str) {
         int len = strlen(buf) + 1;
         out->str = malloc(len);
         strncpy(out->str, buf, len);
-        return 1;
+        return i;
       }
       buf[b++] = str[i];
+      printf("consume str buf=%s\n", buf);
+      break;
+    case TYPE_OBJ:
+      if (str[i] == '}') {
+
+        PANIC("TODO OBJECT")
+
+        return 1;
+      }
+      // consume obj
+
+      switch (obj_state) {
+      case OBJ_STATE_PRE_KEY:
+        switch (str[i]) {
+        case ' ':
+        case '\n':
+        case '\t':
+          // skip to key
+          break;
+        case '"':
+          obj_state = OBJ_STATE_KEY;
+          break;
+        default:
+          PANIC("unexpected character")
+        }
+        break;
+      case OBJ_STATE_KEY:
+        if (str[i] == '"') {
+          obj_state = OBJ_STATE_KEY_END;
+
+          out->num_values++;
+          if (!(out->keys = realloc(out->keys,
+                                    sizeof(const char *) * out->num_values))) {
+            fprintf(stderr, "errno: %d\n", errno);
+            PANIC("realloc keys failed");
+          }
+          if (!(out->values =
+                    realloc(out->values, sizeof(void *) * out->num_values))) {
+            fprintf(stderr, "errno: %d\n", errno);
+            PANIC("realloc values failed");
+          }
+
+          buf[b] = 0;
+          int len = strlen(buf) + 1;
+          out->keys[out->num_values] = malloc(len);
+          strncpy(out->keys[out->num_values], buf, len);
+
+          break;
+        }
+        buf[b++] = str[i];
+        break;
+      case OBJ_STATE_KEY_END:
+        if (str[i] != ':') {
+          PANIC("expected :");
+        }
+
+        JsonValue v;
+        json_parse(&v, str + i + 1);
+        break;
+      default:
+        PANIC("unhandled object state");
+      }
+
       break;
     default:
       PANIC("unhandled type");
@@ -139,6 +249,11 @@ int json_parse(JsonValue *out, const char *str) {
 
     i++;
   }
+
+end_int:
+  buf[b] = 0;
+  out->integer = atoi(buf);
+  return i;
 }
 
 void json_free(JsonValue *v) {
@@ -154,9 +269,25 @@ int main() {
   ASSERT_INT_EQ(1, v.integer);
   json_free(&v);
 
+  json_parse(&v, "               1");
+  printf("value: %d\n", v.integer);
+  ASSERT_INT_EQ(1, v.integer);
+  json_free(&v);
+
   json_parse(&v, "2");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(2, v.integer);
+  json_free(&v);
+
+  json_parse(&v, "2}");
+  printf("value: %d\n", v.integer);
+  ASSERT_INT_EQ(2, v.integer);
+  json_free(&v);
+
+  int n = json_parse(&v, "2223   }");
+  ASSERT_INT_EQ(4, n);
+  printf("value: %d\n", v.integer);
+  ASSERT_INT_EQ(2223, v.integer);
   json_free(&v);
 
   json_parse(&v, "59");
@@ -173,4 +304,6 @@ int main() {
   printf("value: %s\n", v.str);
   ASSERT_STR_EQ("foo", v.str);
   json_free(&v);
+
+  // json_parse(&v, "{\"a\": 2}");
 };

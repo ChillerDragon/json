@@ -183,7 +183,7 @@ int json_parse(JsonValue *out, const char *str) {
       break;
     case TYPE_OBJ:
       if (str[i] == '}') {
-          // TODO: do we need to do anything here? xd
+        // TODO: do we need to do anything here? xd
         return i;
       }
       // consume obj
@@ -208,8 +208,8 @@ int json_parse(JsonValue *out, const char *str) {
           obj_state = OBJ_STATE_KEY_END;
 
           out->num_values++;
-          if (!(out->keys = realloc(out->keys,
-                                    sizeof(char *) * out->num_values))) {
+          if (!(out->keys =
+                    realloc(out->keys, sizeof(char *) * out->num_values))) {
             fprintf(stderr, "errno: %d\n", errno);
             PANIC("realloc keys failed");
           }
@@ -221,18 +221,19 @@ int json_parse(JsonValue *out, const char *str) {
 
           buf[b] = 0;
           int len = strlen(buf) + 1;
-          out->keys[out->num_values-1] = malloc(len);
-          out->values[out->num_values-1] = NULL;
+          out->keys[out->num_values - 1] = malloc(len);
+          out->values[out->num_values - 1] = NULL;
           // printf("set key numvalues=%d\n", out->num_values);
           strncpy(out->keys[out->num_values - 1], buf, len);
-          // printf("set keys[%d] = %s\n", out->num_values - 1, out->keys[out->num_values - 1]);
+          // printf("set keys[%d] = %s\n", out->num_values - 1,
+          // out->keys[out->num_values - 1]);
           break;
         }
         buf[b++] = str[i];
         break;
       case OBJ_STATE_KEY_END:
         if (str[i] != ':') {
-              fprintf(stderr, "at i=%d got str=%s\n", i, str + i );
+          fprintf(stderr, "at i=%d got str=%s\n", i, str + i);
           PANIC("expected :");
         }
 
@@ -241,7 +242,7 @@ int json_parse(JsonValue *out, const char *str) {
         out->values[out->num_values - 1] = v;
         obj_state = OBJ_STATE_VALUE_END;
         break;
-          case OBJ_STATE_VALUE_END:
+      case OBJ_STATE_VALUE_END:
 
         switch (str[i]) {
         case ' ':
@@ -250,13 +251,13 @@ int json_parse(JsonValue *out, const char *str) {
           // skip to }
           break;
         case '}':
-                return i;
+          return i;
           break;
         default:
-                fprintf(stderr, "i=%d str=%s\n", i, str + i);
+          fprintf(stderr, "i=%d str=%s\n", i, str + i);
           PANIC("expected }")
         }
-            break;
+        break;
       default:
         PANIC("unhandled object state");
       }
@@ -276,26 +277,23 @@ end_int:
 }
 
 void json_free(JsonValue *v) {
-  if (v->str)
-  {
+  if (v->str) {
     free(v->str);
     v->str = NULL;
   }
-  for(int i = 0; i < v->num_values; i++) {
-    if(v->keys[i])
-    {
+  for (int i = 0; i < v->num_values; i++) {
+    if (v->keys[i]) {
       printf("freeing key[%d]\n", i);
       free(v->keys[i]);
       v->keys[i] = NULL;
     }
-    if(v->values[i])
-    {
+    if (v->values[i]) {
       printf("freeing value[%d]\n", i);
       free(v->values[i]);
       v->values[i] = NULL;
     }
   }
-  if(v->num_values) {
+  if (v->num_values) {
     puts("freeing keys");
     free(v->keys);
     puts("freeing values");
@@ -361,4 +359,3 @@ int main() {
 };
 
 //  {"a": 2}
-

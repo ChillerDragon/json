@@ -15,6 +15,19 @@ enum {
   TYPE_ARR,
 };
 
+const char *type_to_str(int type)
+{
+  if(type == TYPE_UNDEFINED) { return "UNDEFINED"; }
+  if(type == TYPE_NULL) { return "NULL"; }
+  if(type == TYPE_BOOL) { return "BOOL"; }
+  if(type == TYPE_STR) { return "STRING"; }
+  if(type == TYPE_INT) { return "INTEGER"; }
+  if(type == TYPE_FLOAT) { return "FLOAT"; }
+  if(type == TYPE_OBJ) { return "OBJECT"; }
+  if(type == TYPE_ARR) { return "ARRAY"; }
+  return "unknown";
+}
+
 enum {
   OBJ_STATE_NONE,      // not a object
   OBJ_STATE_PRE_KEY,   // expect "
@@ -164,7 +177,7 @@ int json_parse(JsonValue *out, const char *str) {
       case '8':
       case '9':
         buf[b++] = str[i];
-        printf("consume int buf=%s\n", buf);
+        // printf("consume int buf=%s\n", buf);
         break;
       default:
         goto end_int;
@@ -179,7 +192,7 @@ int json_parse(JsonValue *out, const char *str) {
         return i;
       }
       buf[b++] = str[i];
-      printf("consume str buf=%s\n", buf);
+      // printf("consume str buf=%s\n", buf);
       break;
     case TYPE_OBJ:
       if (str[i] == '}') {
@@ -283,20 +296,20 @@ void json_free(JsonValue *v) {
   }
   for (int i = 0; i < v->num_values; i++) {
     if (v->keys[i]) {
-      printf("freeing key[%d]\n", i);
+      // printf("freeing key[%d]\n", i);
       free(v->keys[i]);
       v->keys[i] = NULL;
     }
     if (v->values[i]) {
-      printf("freeing value[%d]\n", i);
+      // printf("freeing value[%d]\n", i);
       free(v->values[i]);
       v->values[i] = NULL;
     }
   }
   if (v->num_values) {
-    puts("freeing keys");
+    // puts("freeing keys");
     free(v->keys);
-    puts("freeing values");
+    // puts("freeing values");
     free(v->values);
     v->keys = NULL;
     v->values = NULL;
@@ -355,6 +368,9 @@ int main() {
   json_parse(&v, "{\"foo\": 2}");
   printf("key: %s\n", v.keys[0]);
   ASSERT_STR_EQ("foo", v.keys[0]);
+  printf("value type: %s\n", type_to_str(((JsonValue *)v.values[0])->type));
+  printf("value: %d\n", (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[0])->integer));
   json_free(&v);
 };
 

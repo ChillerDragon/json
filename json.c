@@ -266,6 +266,11 @@ int json_parse(JsonValue *out, const char *str) {
         case '}':
           return i;
           break;
+        case ',':
+                b=0;
+                memset(buf, 0, sizeof(buf));
+                obj_state = OBJ_STATE_PRE_KEY;
+          break;
         default:
           fprintf(stderr, "i=%d str=%s\n", i, str + i);
           PANIC("expected }")
@@ -371,6 +376,21 @@ int main() {
   printf("value type: %s\n", type_to_str(((JsonValue *)v.values[0])->type));
   printf("value: %d\n", (((JsonValue *)v.values[0])->integer));
   ASSERT_INT_EQ(2, (((JsonValue *)v.values[0])->integer));
+  json_free(&v);
+
+  json_parse(&v, "{\"foo\": 2, \"bar\": 420}");
+  // foo
+  printf("key: %s\n", v.keys[0]);
+  ASSERT_STR_EQ("foo", v.keys[0]);
+  printf("value type: %s\n", type_to_str(((JsonValue *)v.values[0])->type));
+  printf("value: %d\n", (((JsonValue *)v.values[0])->integer));
+  ASSERT_INT_EQ(2, (((JsonValue *)v.values[0])->integer));
+  // bar
+  printf("key: %s\n", v.keys[1]);
+  ASSERT_STR_EQ("bar", v.keys[1]);
+  printf("value type: %s\n", type_to_str(((JsonValue *)v.values[1])->type));
+  printf("value: %d\n", (((JsonValue *)v.values[1])->integer));
+  ASSERT_INT_EQ(420, (((JsonValue *)v.values[1])->integer));
   json_free(&v);
 };
 

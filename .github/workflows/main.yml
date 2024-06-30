@@ -13,4 +13,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: compile
-      run: g++ ./json.c && ./a.out
+      run: gcc ./json.c && ./a.out

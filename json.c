@@ -209,7 +209,7 @@ int json_parse(JsonValue *out, const char *str) {
 
           out->num_values++;
           if (!(out->keys = realloc(out->keys,
-                                    sizeof(const char *) * out->num_values))) {
+                                    sizeof(char *) * out->num_values))) {
             fprintf(stderr, "errno: %d\n", errno);
             PANIC("realloc keys failed");
           }
@@ -221,9 +221,11 @@ int json_parse(JsonValue *out, const char *str) {
 
           buf[b] = 0;
           int len = strlen(buf) + 1;
-          out->keys[out->num_values] = malloc(len);
-          strncpy(out->keys[out->num_values], buf, len);
-
+          out->keys[out->num_values-1] = malloc(len);
+          out->values[out->num_values-1] = NULL;
+          // printf("set key numvalues=%d\n", out->num_values);
+          strncpy(out->keys[out->num_values - 1], buf, len);
+          // printf("set keys[%d] = %s\n", out->num_values - 1, out->keys[out->num_values - 1]);
           break;
         }
         buf[b++] = str[i];
@@ -236,7 +238,7 @@ int json_parse(JsonValue *out, const char *str) {
 
         JsonValue *v = malloc(sizeof(JsonValue));
         i += json_parse(v, str + i + 1);
-        out->values[out->num_values] = v;
+        out->values[out->num_values - 1] = v;
         obj_state = OBJ_STATE_VALUE_END;
         break;
           case OBJ_STATE_VALUE_END:
@@ -275,16 +277,31 @@ end_int:
 
 void json_free(JsonValue *v) {
   if (v->str)
+  {
     free(v->str);
+    v->str = NULL;
+  }
   for(int i = 0; i < v->num_values; i++) {
     if(v->keys[i])
+    {
+      printf("freeing key[%d]\n", i);
       free(v->keys[i]);
+      v->keys[i] = NULL;
+    }
     if(v->values[i])
+    {
+      printf("freeing value[%d]\n", i);
       free(v->values[i]);
+      v->values[i] = NULL;
+    }
   }
   if(v->num_values) {
+    puts("freeing keys");
     free(v->keys);
+    puts("freeing values");
     free(v->values);
+    v->keys = NULL;
+    v->values = NULL;
   }
 }
 
@@ -335,6 +352,11 @@ int main() {
   json_parse(&v, "{\"a\": 2}");
   printf("key: %s\n", v.keys[0]);
   ASSERT_STR_EQ("a", v.keys[0]);
+  json_free(&v);
+
+  json_parse(&v, "{\"foo\": 2}");
+  printf("key: %s\n", v.keys[0]);
+  ASSERT_STR_EQ("foo", v.keys[0]);
   json_free(&v);
 };
 

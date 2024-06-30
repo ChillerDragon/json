@@ -183,10 +183,8 @@ int json_parse(JsonValue *out, const char *str) {
       break;
     case TYPE_OBJ:
       if (str[i] == '}') {
-
-        PANIC("TODO OBJECT")
-
-        return 1;
+          // TODO: do we need to do anything here? xd
+        return i;
       }
       // consume obj
 
@@ -232,12 +230,31 @@ int json_parse(JsonValue *out, const char *str) {
         break;
       case OBJ_STATE_KEY_END:
         if (str[i] != ':') {
+              fprintf(stderr, "at i=%d got str=%s\n", i, str + i );
           PANIC("expected :");
         }
 
-        JsonValue v;
-        json_parse(&v, str + i + 1);
+        JsonValue *v = malloc(sizeof(JsonValue));
+        i += json_parse(v, str + i + 1);
+        out->values[out->num_values] = v;
+        obj_state = OBJ_STATE_VALUE_END;
         break;
+          case OBJ_STATE_VALUE_END:
+
+        switch (str[i]) {
+        case ' ':
+        case '\n':
+        case '\t':
+          // skip to }
+          break;
+        case '}':
+                return i;
+          break;
+        default:
+                fprintf(stderr, "i=%d str=%s\n", i, str + i);
+          PANIC("expected }")
+        }
+            break;
       default:
         PANIC("unhandled object state");
       }
@@ -259,6 +276,16 @@ end_int:
 void json_free(JsonValue *v) {
   if (v->str)
     free(v->str);
+  for(int i = 0; i < v->num_values; i++) {
+    if(v->keys[i])
+      free(v->keys[i]);
+    if(v->values[i])
+      free(v->values[i]);
+  }
+  if(v->num_values) {
+    free(v->keys);
+    free(v->values);
+  }
 }
 
 int main() {
@@ -305,5 +332,11 @@ int main() {
   ASSERT_STR_EQ("foo", v.str);
   json_free(&v);
 
-  // json_parse(&v, "{\"a\": 2}");
+  json_parse(&v, "{\"a\": 2}");
+  printf("key: %s\n", v.keys[0]);
+  ASSERT_STR_EQ("a", v.keys[0]);
+  json_free(&v);
 };
+
+//  {"a": 2}
+

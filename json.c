@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum {
   TYPE_UNDEFINED,
@@ -16,7 +17,7 @@ struct JsonValue {
   int type;
 
   int integer;
-  const char *str;
+  char *str;
   const char **keys;
   void **values;
 } typedef JsonValue;
@@ -40,6 +41,19 @@ void _assert_int_eq(int expected, int actual, const char *file, int line) {
 #define ASSERT_INT_EQ(expected, actual)                                        \
   _assert_int_eq(expected, actual, __FILE__, __LINE__);
 
+void _assert_str_eq(const char *expected, const char *actual, const char *file,
+                    int line) {
+  if (!strcmp(expected, actual))
+    return;
+
+  fprintf(stderr, "%s:%d assert failed! expected: \"%s\" got: \"%s\"\n", file,
+          line, expected, actual);
+  exit(1);
+}
+
+#define ASSERT_STR_EQ(expected, actual)                                        \
+  _assert_str_eq(expected, actual, __FILE__, __LINE__);
+
 // returns 0 on error
 // returns 1 on succes
 int parse_value(JsonValue *out, const char *str) {
@@ -48,7 +62,8 @@ int parse_value(JsonValue *out, const char *str) {
   // TODO: allow bigger numbers
   //       max integer digits is 16
   // TODO: dont 0 initialize it its slow af but im too lazy to nullterm in dbg
-  // msgs
+  //       msgs
+  // TODO: support strings longer than 16 LMAO
   char buf[16] = {0};
   // buf index
   int b = 0;
@@ -62,6 +77,9 @@ int parse_value(JsonValue *out, const char *str) {
         buf[b] = 0;
         out->integer = atoi(buf);
         return 1;
+        break;
+      case TYPE_STR:
+        PANIC("missing \"");
         break;
       default:
         PANIC("unhandled type on eof");
@@ -87,13 +105,22 @@ int parse_value(JsonValue *out, const char *str) {
         break;
       case '"':
         out->type = TYPE_STR;
-        buf[b++] = str[i];
         break;
       default:
         PANIC("unexpected symbol");
       }
       break;
     case TYPE_INT:
+      buf[b++] = str[i];
+      break;
+    case TYPE_STR:
+      if (str[i] == '"') {
+        buf[b] = 0;
+        int len = strlen(buf);
+        out->str = malloc(len + 1);
+        strncpy(out->str, buf, len);
+        return 1;
+      }
       buf[b++] = str[i];
       break;
     default:
@@ -118,4 +145,12 @@ int main() {
   parse_value(&v, "59");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(59, v.integer);
+
+  parse_value(&v, "\"a\"");
+  printf("value: %s\n", v.str);
+  ASSERT_STR_EQ("a", v.str);
+
+  parse_value(&v, "\"foo\"");
+  printf("value: %s\n", v.str);
+  ASSERT_STR_EQ("foo", v.str);
 };

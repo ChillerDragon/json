@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum {
   TYPE_UNDEFINED,
@@ -18,6 +19,7 @@ struct JsonValue {
 
   int integer;
   char *str;
+  int num_values;
   const char **keys;
   void **values;
 } typedef JsonValue;
@@ -56,8 +58,13 @@ void _assert_str_eq(const char *expected, const char *actual, const char *file,
 
 // returns 0 on error
 // returns 1 on succes
-int parse_value(JsonValue *out, const char *str) {
+int json_parse(JsonValue *out, const char *str) {
   out->type = TYPE_UNDEFINED;
+  out->str = NULL;
+  out->num_values = 0;
+  out->integer = 0;
+  out->keys = NULL;
+  out->values = NULL;
   int i = 0;
   // TODO: allow bigger numbers
   //       max integer digits is 16
@@ -106,6 +113,9 @@ int parse_value(JsonValue *out, const char *str) {
       case '"':
         out->type = TYPE_STR;
         break;
+      case '{':
+        out->type = TYPE_OBJ;
+        break;
       default:
         PANIC("unexpected symbol");
       }
@@ -116,8 +126,8 @@ int parse_value(JsonValue *out, const char *str) {
     case TYPE_STR:
       if (str[i] == '"') {
         buf[b] = 0;
-        int len = strlen(buf);
-        out->str = malloc(len + 1);
+        int len = strlen(buf) + 1;
+        out->str = malloc(len);
         strncpy(out->str, buf, len);
         return 1;
       }
@@ -131,26 +141,36 @@ int parse_value(JsonValue *out, const char *str) {
   }
 }
 
+void json_free(JsonValue *v) {
+  if (v->str)
+    free(v->str);
+}
+
 int main() {
   JsonValue v;
 
-  parse_value(&v, "1");
+  json_parse(&v, "1");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(1, v.integer);
+  json_free(&v);
 
-  parse_value(&v, "2");
+  json_parse(&v, "2");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(2, v.integer);
+  json_free(&v);
 
-  parse_value(&v, "59");
+  json_parse(&v, "59");
   printf("value: %d\n", v.integer);
   ASSERT_INT_EQ(59, v.integer);
+  json_free(&v);
 
-  parse_value(&v, "\"a\"");
+  json_parse(&v, "\"a\"");
   printf("value: %s\n", v.str);
   ASSERT_STR_EQ("a", v.str);
+  json_free(&v);
 
-  parse_value(&v, "\"foo\"");
+  json_parse(&v, "\"foo\"");
   printf("value: %s\n", v.str);
   ASSERT_STR_EQ("foo", v.str);
+  json_free(&v);
 };

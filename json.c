@@ -33,10 +33,6 @@ enum {
   OBJ_STATE_PRE_KEY,   // expect "
   OBJ_STATE_KEY,       // expect key char or "
   OBJ_STATE_KEY_END,   // expect :
-  OBJ_STATE_PRE_VALUE, // expect value start or spaces  ??? do we need this?
-                       // recursion should cover it
-  OBJ_STATE_VALUE,     // expect value end                  ??? do we need this?
-                       // recursion should cover it
   OBJ_STATE_VALUE_END, // expect }
 };
 
@@ -391,6 +387,15 @@ int main() {
   printf("value type: %s\n", type_to_str(((JsonValue *)v.values[1])->type));
   printf("value: %d\n", (((JsonValue *)v.values[1])->integer));
   ASSERT_INT_EQ(420, (((JsonValue *)v.values[1])->integer));
+  json_free(&v);
+
+  json_parse(&v, "{\"foo\": {\"bar\": 2}}");
+  printf("key: %s\n", v.keys[0]);
+  ASSERT_STR_EQ("foo", v.keys[0]);
+  printf("value type: %s\n", type_to_str(((JsonValue *)v.values[0])->type));
+  ASSERT_STR_EQ("OBJECT", type_to_str(((JsonValue *)v.values[0])->type));
+  printf("value[0].keys[0] %d\n", ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
+  ASSERT_INT_EQ(2, ((JsonValue *)((JsonValue *)v.values[0])->values[0])->integer);
   json_free(&v);
 };
 
